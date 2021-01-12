@@ -35,14 +35,15 @@
                     </div>
                     <group>
                         <group>
-                            <field name="start_date"/>
-                            <field name="end_date"/>
+                            <field name="start_date" widget="daterange" options="{'related_end_date': 'end_date'}"/>
+                            <field name="end_date" widget="daterange" options="{'related_start_date': 'start_date'}"/>
                             <field name="application"/>
                             <field name="factor"/>
                             <field name="basis"/>
                         </group>
                         <group>
-                            <field name="posted_date"/>
+                            <field name="accounting_date"/>
+                            <field name="posted_date" attrs="{'invisible': [('state', '!=', 'posted')]}"/>
                             <field name="journal_id" domain="[('type', '=', 'general')]" widget="selection"/>
                             <field name="debit_account_id" widget="selection"/>
                             <field name="debit_analytic_account_ids" widget="many2many_tags"/>

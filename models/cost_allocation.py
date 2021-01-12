@@ -1,5 +1,5 @@
 from odoo import api, fields, models, _
-from datetime import datetime
+from datetime import datetime, date
 import odoo.addons.decimal_precision as dp
 import logging
 
@@ -46,6 +46,7 @@ class CostAllocation(models.Model):
     description = fields.Text(string="Description")
     start_date = fields.Date(string="Start Date", required=True)
     end_date = fields.Date(string="End Date", required=True)
+    accounting_date = fields.Date(string="Accounting Date", required=True)
     debit_account_id = fields.Many2one('account.account', string="Debit Account", required=True)
     debit_analytic_account_ids = fields.Many2many(
         'account.analytic.account',
@@ -61,7 +62,7 @@ class CostAllocation(models.Model):
         'credit_analytic_account_id',
         string="Credit Analytic Account")
     journal_id = fields.Many2one('account.journal', string="Journal", required=True)
-    posted_date = fields.Date(string="Posted Date", required=True)
+    posted_date = fields.Date(string="Posted Date")
     factor = fields.Float(string="Factor", required=True)
     basis = fields.Float(string="Basis", required=True)
     application = fields.Selection(COST_ALLOC_APPLICATION, string="Application", default='internet')
@@ -72,71 +73,54 @@ class CostAllocation(models.Model):
     # Compute
     def button_compute_source_information(self):
         location_obj = self.env['subscriber.location']
-        subscriber_obj = self.env['res.partner']
-        sale_subscriber_obj = self.env['sale.subscription']
-        sale_subscriber_line_obj = self.env['sale.subscription.line']
+        sale_subscription_obj = self.env['sale.subscription']
+        sale_subscription_line_obj = self.env['sale.subscription.line']
         start_date = self.start_date
         end_date = self.end_date
         debit_account_id = self.debit_account_id.id
         application = self.application
         self.update({"cost_allocation_line": None})
         item_code = ['debit', 'credit']
-        cost_allocation_line_dict = {}
-        cost_allocation_line = {
-            "date": None,
-            "account_id": None,
-            "analytic_account_id": None,
-            "partner_id": None,
-            "name": self.name,
-            "debit": 0.00,
-            "credit": 0.00,
-            "values": 0.00,
-            "share": 0.00,
-            "cost_allocation_id": self.id,
-        }
-        _logger.debug(f'cost_allocation_line: {cost_allocation_line}')
         if application == 'internet':
             _logger.debug(f'Compute Internet')
-            internet_usage = 0
+            credit_internet_usage = 0
             journal_item = []
+            cost_allocation_line_dict = {}
             # Search in Location based on the Debit Analytic Accounts.
             debit_analytic_ids = [rec.id for rec in self.debit_analytic_account_ids]
-            location_args = [("analytic_account_id", "in", debit_analytic_ids)]
-            debit_subscriber_location = location_obj.search(location_args)
+            # Debit
+            subscription_args = [
+                                ("partner_id.subscriber_location_id.analytic_account_id", "in", debit_analytic_ids),
+                                ("date_start", '>=', start_date),
+                                ("date_start", '<=', end_date),
+                                ("stage_id.name", "not in", ["Draft","Closed"])]
+            subscription_list = sale_subscription_obj.search(subscription_args)
+            _logger.debug(f'subscription_list: {subscription_list}')
+            for rec_list in subscription_list:
+                debit_internet_usage = 0
+                subscriber_location_id = rec_list.partner_id.subscriber_location_id
+                cost_allocation_line = {
+                    "date": self.accounting_date,
+                    "account_id": debit_account_id,
+                    "analytic_account_id": subscriber_location_id.analytic_account_id.id,
+                    "partner_id": None,
+                    "name": self.name,
+                    "debit": 0.00,
+                    "credit": 0.00,
+                    "values": 0.00,
+                    "share": 0.00,
+                    "cost_allocation_id": self.id,
+                    }
+                cost_allocation_line_dict[subscriber_location_id.id] = cost_allocation_line
+                for rec in rec_list.recurring_invoice_line_ids:
+                    debit_internet_usage += rec.product_id.internet_usage
+                    _logger.debug(f'debit_internet_usage: {debit_internet_usage} || subscriber_location_id: {subscriber_location_id.id}')
+                    cost_allocation_line['debit'] = debit_internet_usage
 
-            for record in debit_subscriber_location:
-                _logger.debug(f'Location')
-                _logger.debug(f'name: {record.name} || analytic_account_id: {record.analytic_account_id}')
-                # Debit
-
-                cost_allocation_line['account_id'] = debit_account_id
-                cost_allocation_line['analytic_account_id'] = record.analytic_account_id.id
                 _logger.debug(f'cost_allocation_line_dict: {cost_allocation_line_dict}')
-                # get all subscriber within the location
-                subscriber_args = [("subscriber_location_id", '=', record.id)]
-                subscriber = subscriber_obj.search(subscriber_args)
-                subscriber_ids = [rec.id for rec in subscriber]
-                _logger.debug(f'subscriber_ids: {subscriber_ids}')
-                subscription_args = [
-                                    ("partner_id", "in", subscriber_ids),
-                                    ("date_start", '>=', self.start_date),
-                                    ("date_start", '<=', self.end_date),
-                                    ("stage_id.name", "!=", "Closed")]
-                subscription_list = sale_subscriber_obj.search(subscription_args)
-                subscription_ids = [rec.id for rec in subscription_list]
-                subscription_line_args = [("analytic_account_id", "in", subscription_ids)]
-                sale_subscriber_line = sale_subscriber_line_obj.search(subscription_line_args)
-                for rec in sale_subscriber_line:
-                    internet_usage += rec.product_id.internet_usage
-                cost_allocation_line['debit'] = internet_usage
-                cost_allocation_line_dict[record.name] = cost_allocation_line
-            _logger.debug(f'cost_allocation_line_dict: {cost_allocation_line_dict}')
             for key, item in cost_allocation_line_dict.items():
-                _logger.debug(f'cost allocation key: {key}')
-                _logger.debug(f'cost allocation item: {item}')
                 journal_item.append((0, 0, item))
             # journal_item.append((0, 0, cost_allocation_line))
-            _logger.debug(f'cost_allocation_line: {cost_allocation_line} || journal_item: {journal_item}')
             self.update({"cost_allocation_line": journal_item})
 
         elif application == 'program_cost':
