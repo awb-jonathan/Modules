@@ -12,7 +12,7 @@
                     <button name="button_compute_source_information"
                             type="object"
                             class="oe_highlight"
-                            string="Compute"/>
+                            string="Generate Summary"/>
                     <!-- Allocate-->
                     <button name="button_allocate_amount_and_share"
                             type="object"
@@ -53,20 +53,21 @@
                     <notebook>
                         <page string="Journal Items" id="cost_allocation_page_line">
                             <field name="cost_allocation_line">
-                                <tree editable="bottom">
-                                    <field name="date" width="0.5" required="1"/>
-                                    <field name="account_id" widget="selection" required="1"/>
-                                    <field name="partner_id" widget="selection" required="1"/>
+                                <tree editable="bottom" create="false" delete="false">
+                                    <field name="date" width="0.5"/>
+                                    <field name="account_id" widget="selection"/>
+                                    <field name="analytic_account_id" widget="selection"/>
+                                    <field name="partner_id" widget="selection" optional="hide"/>
                                     <field name="name" optional="show"/>
-                                    <field name="tax_ids" widget="many2many_tags" width="0.5" optional="show"/>
-                                    <field name="debit" width="0.5" sum="Total Debit"/>
-                                    <field name="credit" width="0.5" sum="Total Credit"/>
-                                    <field name="tag_ids" widget="many2many_tags" width="0.5" optional="show"
+                                    <field name="tax_ids" widget="many2many_tags" width="0.5" optional="hide"/>
+                                    <field name="tag_ids" widget="many2many_tags" width="0.5" optional="hide"
                                         string="Tax Grids"
                                         options="{'no_open': True, 'no_create': True}"
                                         domain="[('applicability', '=', 'taxes')]"/>
                                     <field name="values" width="0.5"/>
                                     <field name="share" width="0.5"/>
+                                    <field name="debit" width="0.5" sum="Total Debit"/>
+                                    <field name="credit" width="0.5" sum="Total Credit"/>
 
                                 </tree>
                             </field>
