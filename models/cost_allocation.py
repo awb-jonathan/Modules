@@ -91,12 +91,12 @@ class CostAllocation(models.Model):
                 ("date_start", "<=", end_date),
                 ("stage_id.name", "not in", ["Draft", "Closed"])]
         self.update({"cost_allocation_line": None})
+
         if application == 'internet':
             _logger.debug(f'COMPUTE INTERNET')
             journal_item = []
             debit_line_dict = {}
             credit_line_dict = {}
-            _logger.debug(f'PRODUCT_CATEGORY: {product_category}')
             # Debit
             debit_args = args + [("partner_id.subscriber_location_id.analytic_account_id", "in", debit_analytic_ids)]
             debit_subscription = sale_subscription_obj.search(debit_args)
@@ -109,6 +109,8 @@ class CostAllocation(models.Model):
                         "account_id": debit_account_id,
                         "analytic_account_id": debit_subscriber_id.analytic_account_id.id,
                         "partner_id": None,
+                        "tax_ids": None,
+                        "tag_ids": None,
                         "name": self.name,
                         "debit": 0.00,
                         "credit": 0.00,
@@ -118,31 +120,12 @@ class CostAllocation(models.Model):
                         "line_type": 'debit',
                         }
                 for rec in rec_list.recurring_invoice_line_ids:
-                    _logger.debug(f'rec.product_id.categ_id.id: {rec.product_id.categ_id.id} || product_category: {product_category}')
                     if rec.product_id.categ_id.id in product_category:
                         debit_line_dict[debit_subscriber_id.id]['values'] += rec.product_id.internet_usage
                         credit_value += rec.product_id.internet_usage
             for key, item in debit_line_dict.items():
                 if item['values'] != 0:
                     journal_item.append((0, 0, item))
-            _logger.debug(f'journal_item: {journal_item}')
-            # Credit
-            credit_analytic_ids = self.credit_analytic_account_id.id
-            credit_line_dict = {
-                "date": self.accounting_date,
-                "account_id": credit_account_id,
-                "analytic_account_id": credit_analytic_ids,
-                "partner_id": None,
-                "name": self.name,
-                "debit": 0.00,
-                "credit": 0.00,
-                "values": credit_value,
-                "share": 0.00,
-                "cost_allocation_id": self.id,
-                "line_type": 'credit',
-                }
-            journal_item.append((0, 0, credit_line_dict))
-            self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
         elif application == 'program_cost':
             _logger.debug(f'COMPUTE PROGRAM COST')
@@ -161,6 +144,8 @@ class CostAllocation(models.Model):
                         "account_id": debit_account_id,
                         "analytic_account_id": debit_subscriber_id.analytic_account_id.id,
                         "partner_id": None,
+                        "tax_ids": None,
+                        "tag_ids": None,
                         "name": self.name,
                         "debit": 0.00,
                         "credit": 0.00,
@@ -176,23 +161,6 @@ class CostAllocation(models.Model):
             for key, item in debit_line_dict.items():
                 if item['values'] != 0:
                     journal_item.append((0, 0, item))
-            # Credit
-            credit_analytic_ids = self.credit_analytic_account_id.id
-            credit_line_dict = {
-                "date": self.accounting_date,
-                "account_id": credit_account_id,
-                "analytic_account_id": credit_analytic_ids,
-                "partner_id": None,
-                "name": self.name,
-                "debit": 0.00,
-                "credit": 0.00,
-                "values": credit_value,
-                "share": 0.00,
-                "cost_allocation_id": self.id,
-                "line_type": 'credit',
-                }
-            journal_item.append((0, 0, credit_line_dict))
-            self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
         elif application == 'salaries':
             _logger.debug(f'COMPUTE SALARIES')
@@ -212,6 +180,8 @@ class CostAllocation(models.Model):
                         "account_id": debit_account_id,
                         "analytic_account_id": debit_subscriber_id.analytic_account_id.id,
                         "partner_id": None,
+                        "tax_ids": None,
+                        "tag_ids": None,
                         "name": self.name,
                         "debit": 0.00,
                         "credit": 0.00,
@@ -230,23 +200,6 @@ class CostAllocation(models.Model):
                 credit_value += len(invoices)
             for key, item in debit_line_dict.items():
                 journal_item.append((0, 0, item))
-            # Credit
-            credit_analytic_ids = self.credit_analytic_account_id.id
-            credit_line_dict = {
-                "date": self.accounting_date,
-                "account_id": credit_account_id,
-                "analytic_account_id": credit_analytic_ids,
-                "partner_id": None,
-                "name": self.name,
-                "debit": 0.00,
-                "credit": 0.00,
-                "values": credit_value,
-                "share": 0.00,
-                "cost_allocation_id": self.id,
-                "line_type": 'credit',
-                }
-            journal_item.append((0, 0, credit_line_dict))
-            self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
         elif application == 'others':
             _logger.debug(f'COMPUTE OTHERS')
@@ -257,6 +210,8 @@ class CostAllocation(models.Model):
                     "account_id": debit_account_id,
                     "analytic_account_id": record.id,
                     "partner_id": None,
+                    "tax_ids": None,
+                    "tag_ids": None,
                     "name": self.name,
                     "debit": 0.00,
                     "credit": 0.00,
@@ -273,6 +228,8 @@ class CostAllocation(models.Model):
                     "account_id": credit_account_id,
                     "analytic_account_id": record.id,
                     "partner_id": None,
+                    "tax_ids": None,
+                    "tag_ids": None,
                     "name": self.name,
                     "debit": 0.00,
                     "credit": 0.00,
@@ -284,6 +241,28 @@ class CostAllocation(models.Model):
 
                 journal_data.append((0, 0, credit_line_dict))
             self.update({"cost_allocation_line": journal_data, "state": "draft"})
+
+        if application in ['internet', 'program_cost', 'salaries']:
+            # Credit
+            credit_analytic_ids = self.credit_analytic_account_id.id
+            credit_line_dict = {
+                "date": self.accounting_date,
+                "account_id": credit_account_id,
+                "analytic_account_id": credit_analytic_ids,
+                "partner_id": None,
+                "tax_ids": None,
+                "tag_ids": None,
+                "name": self.name,
+                "debit": 0.00,
+                "credit": 0.00,
+                "values": credit_value,
+                "share": 0.00,
+                "cost_allocation_id": self.id,
+                "line_type": 'credit',
+                }
+            if credit_value != 0:
+                journal_item.append((0, 0, credit_line_dict))
+            self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
     def button_allocate_amount_and_share(self):
         factor = self.factor
@@ -307,6 +286,9 @@ class CostAllocation(models.Model):
             raw_data = {
                         'account_id': record.account_id.id,
                         'name': record.name,
+                        'partner_id': record.partner_id,
+                        "tax_ids": record.tax_ids,
+                        "tag_ids": record.tag_ids,
                         'analytic_account_id': record.analytic_account_id.id,
                         'debit': record.debit,
                         'credit': record.credit}
