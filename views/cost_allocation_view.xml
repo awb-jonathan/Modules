@@ -43,24 +43,32 @@
         <field name="arch" type="xml">
             <form string="Cost Allocation">
                 <header>
-                    <!-- Compute -->
+                    <!-- Compute -->                            
                     <button name="button_compute_source_information"
                             type="object"
                             class="oe_highlight"
+                            attrs="{'invisible': [('state', '!=', 'draft')]}"
                             string="Compute"/>
-                            <!-- attrs="{'invisible': [('state', '!=', 'draft')]}" -->
+                            
                     <!-- Allocate-->
                     <button name="button_allocate_amount_and_share"
                             type="object"
                             class="oe_highlight"
+                            attrs="{'invisible': [('state', 'not in', ['draft'])]}"
                             string="Allocate"/>
-                            <!-- attrs="{'invisible': [('state', 'not in', ['draft', 'posted'])]}" -->
+                            
                     <!-- Post -->
                     <button name="button_posting_journal_entries"
                             type="object"
                             class="oe_highlight"
+                            attrs="{'invisible': [('state', '!=', 'allocated')]}"
                             string="Post"/>
-                            <!-- attrs="{'invisible': [('state', '!=', 'allocated')]}" -->
+
+                    <button name="button_reset_to_draft"
+                            type="object"
+                            attrs="{'invisible': [('state', 'not in', ['allocated', 'posted'])]}"
+                            string="Reset to Draft"/>
+                            
                     <field name="state" widget="statusbar" statusbar_visible="draft,allocated,posted"/> 
                 </header>
                 <sheet>
@@ -75,8 +83,12 @@
                             <field name="application"/>
                             <field name="start_date" widget="daterange" options="{'related_end_date': 'end_date'}"/>
                             <field name="end_date" widget="daterange" options="{'related_start_date': 'start_date'}"/>
-                            <field name="factor" attrs="{'readonly': [('application', '!=', 'others')], 'required': [('application', '=', 'others')]}"/>
+                            <field name="factor" 
+                                attrs="{'readonly': [('application', '!=', 'others')], 'required': [('application', '=', 'others')]}"/>
                             <field name="basis"/>
+                            <field name="product_category_id" 
+                                widget="many2many_tags" 
+                                attrs="{'invisible': [('application', '=', 'others')], 'required': [('application', '!=', 'others')]}"/>
                         </group>
                         <group>
                             <field name="accounting_date"/>
@@ -85,8 +97,12 @@
                             <field name="debit_account_id" widget="selection"/>
                             <field name="debit_analytic_account_id" widget="many2many_tags"/>
                             <field name="credit_account_id" widget="selection"/>
-                            <field name="credit_other_analytic_account_id" widget="many2many_tags" attrs="{'invisible': [('application', '!=', 'others')]}"/>
-                            <field name="credit_analytic_account_id" attrs="{'invisible': [('application', '=', 'others')]}"/>
+                            <field name="credit_other_analytic_account_id" 
+                                widget="many2many_tags" 
+                                attrs="{'invisible': [('application', '!=', 'others')]}"/>
+                            <field name="credit_analytic_account_id"
+                                widget="selection" 
+                                attrs="{'invisible': [('application', '=', 'others')]}"/>
                         </group>
                     </group>
                     <notebook>
@@ -94,8 +110,8 @@
                             <field name="cost_allocation_line" attrs="{'readonly': [('application', '!=', 'others')]}">
                                 <tree editable="bottom">
                                     <field name="date" width="0.5"/>
-                                    <field name="account_id" widget="selection"/>
-                                    <field name="analytic_account_id" widget="selection"/>
+                                    <field name="account_id"/>
+                                    <field name="analytic_account_id"/>
                                     <field name="partner_id" widget="selection" optional="hide"/>
                                     <field name="name" optional="show"/>
                                     <field name="tax_ids" widget="many2many_tags" width="0.5" optional="hide"/>
@@ -104,7 +120,7 @@
                                         options="{'no_open': True, 'no_create': True}"
                                         domain="[('applicability', '=', 'taxes')]"/>
                                     <field name="values" width="0.5"/>
-                                    <field name="share" width="0.5"/>
+                                    <field name="share" width="0.5" widget="percentage"/>
                                     <field name="debit" width="0.5" sum="Total Debit"/>
                                     <field name="credit" width="0.5" sum="Total Credit"/>
                                     <field name="line_type" width="0.5" invisible="1"/>

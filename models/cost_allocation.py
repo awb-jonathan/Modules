@@ -1,5 +1,6 @@
 from odoo import api, fields, models, _
 from datetime import datetime, date
+from odoo.exceptions import RedirectWarning, UserError, ValidationError, AccessError
 import odoo.addons.decimal_precision as dp
 import logging
 
@@ -68,11 +69,12 @@ class CostAllocation(models.Model):
     credit_analytic_account_id = fields.Many2one('account.analytic.account', string="Credit Analytic Account")
     journal_id = fields.Many2one('account.journal', string="Journal", required=True)
     posted_date = fields.Date(string="Posted Date")
-    factor = fields.Float(string="Factor", required=True)
+    factor = fields.Float(string="Factor")
     basis = fields.Float(string="Basis", required=True)
     application = fields.Selection(COST_ALLOC_APPLICATION, string="Application", default='internet')
     state = fields.Selection(COST_ALLOC_STATUS, string="Status", default='draft')
-    cost_allocation_line = fields.One2many('cost.allocation.line', 'cost_allocation_id', string="Journal Items")
+    cost_allocation_line = fields.One2many('cost.allocation.line', 'cost_allocation_id', string="Journal Items")    
+    product_category_id = fields.Many2many('product.category', string="Product Category")
 
     # button
     # Compute
@@ -83,19 +85,20 @@ class CostAllocation(models.Model):
         debit_account_id = self.debit_account_id.id
         credit_account_id = self.credit_account_id.id
         application = self.application
-        self.update({"cost_allocation_line": None})
+        args = [("date_start", ">=", start_date),
+                ("date_start", "<=", end_date),
+                ("stage_id.name", "not in", ["Draft", "Closed"])]
         if application == 'internet':
+            self.update({"cost_allocation_line": None})
             _logger.debug(f'COMPUTE INTERNET')
             journal_item = []
             debit_line_dict = {}
             credit_line_dict = {}
             debit_analytic_ids = [rec.id for rec in self.debit_analytic_account_id]
+            product_category = [rec.id for rec in self.product_category_id]
+            _logger.debug(f'PRODUCT_CATEGORY: {product_category}')
             # Debit
-            debit_args = [
-                        ("partner_id.subscriber_location_id.analytic_account_id", "in", debit_analytic_ids),
-                        ("date_start", ">=", start_date),
-                        ("date_start", "<=", end_date),
-                        ("stage_id.name", "not in", ["Draft", "Closed"])]
+            debit_args = args + [("partner_id.subscriber_location_id.analytic_account_id", "in", debit_analytic_ids)]
             debit_subscription = sale_subscription_obj.search(debit_args)
             credit_value = 0
             for rec_list in debit_subscription:
@@ -114,6 +117,61 @@ class CostAllocation(models.Model):
                         "cost_allocation_id": self.id,
                         "line_type": 'debit',
                         }
+                for rec in rec_list.recurring_invoice_line_ids:
+                    _logger.debug(f'rec.product_id.categ_id.id: {rec.product_id.categ_id.id} || product_category: {product_category}')
+                    if rec.product_id.categ_id.id in product_category:
+                        debit_line_dict[debit_subscriber_id.id]['values'] += rec.product_id.internet_usage
+                        credit_value += rec.product_id.internet_usage
+            for key, item in debit_line_dict.items():
+                if item['values'] != 0:
+                    journal_item.append((0, 0, item))
+            _logger.debug(f'journal_item: {journal_item}')
+            # Credit
+            credit_analytic_ids = self.credit_analytic_account_id.id
+            credit_line_dict = {
+                "date": self.accounting_date,
+                "account_id": credit_account_id,
+                "analytic_account_id": credit_analytic_ids,
+                "partner_id": None,
+                "name": self.name,
+                "debit": 0.00,
+                "credit": 0.00,
+                "values": credit_value,
+                "share": 0.00,
+                "cost_allocation_id": self.id,
+                "line_type": 'credit',
+                }
+            journal_item.append((0, 0, credit_line_dict))
+            self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
+
+        elif application == 'program_cost':
+            self.update({"cost_allocation_line": None})
+            _logger.debug(f'COMPUTE PROGRAM COST')
+            journal_item = []
+            debit_line_dict = {}
+            credit_line_dict = {}
+            debit_analytic_ids = [rec.id for rec in self.debit_analytic_account_id]
+            # Debit
+            debit_args = args + [("partner_id.subscriber_location_id.analytic_account_id", "in", debit_analytic_ids)]
+            debit_subscription = sale_subscription_obj.search(debit_args)
+            credit_value = 0
+            for rec_list in debit_subscription:
+                debit_subscriber_id = rec_list.partner_id.subscriber_location_id
+                if debit_subscriber_id.id not in debit_line_dict:
+                    debit_line_dict[debit_subscriber_id.id] = {
+                        "date": self.accounting_date,
+                        "account_id": debit_account_id,
+                        "analytic_account_id": debit_subscriber_id.analytic_account_id.id,
+                        "partner_id": None,
+                        "name": self.name,
+                        "debit": 0.00,
+                        "credit": 0.00,
+                        "values": 0.00,
+                        "share": 0.00,
+                        "cost_allocation_id": self.id,
+                        "line_type": 'debit',
+                        }
+                # CHANGE INTERNET USAGE TO CABLE
                 for rec in rec_list.recurring_invoice_line_ids:
                     debit_line_dict[debit_subscriber_id.id]['values'] += rec.product_id.internet_usage
                     credit_value += rec.product_id.internet_usage
@@ -137,14 +195,96 @@ class CostAllocation(models.Model):
             journal_item.append((0, 0, credit_line_dict))
             self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
-        elif application == 'program_cost':
-            return True
         elif application == 'salaries':
-            return True
+            self.update({"cost_allocation_line": None})
+            _logger.debug(f'COMPUTE SALARIES')
+            journal_item = []
+            debit_line_dict = {}
+            credit_line_dict = {}
+            debit_analytic_ids = [rec.id for rec in self.debit_analytic_account_id]
+            # Debit
+            debit_args = args + [("partner_id.subscriber_location_id.analytic_account_id", "in", debit_analytic_ids)]
+            debit_subscription = sale_subscription_obj.search(debit_args)
+            credit_value = 0
+            for rec_list in debit_subscription:
+                debit_subscriber_id = rec_list.partner_id.subscriber_location_id
+                if debit_subscriber_id.id not in debit_line_dict:
+                    debit_line_dict[debit_subscriber_id.id] = {
+                        "date": self.accounting_date,
+                        "account_id": debit_account_id,
+                        "analytic_account_id": debit_subscriber_id.analytic_account_id.id,
+                        "partner_id": None,
+                        "name": self.name,
+                        "debit": 0.00,
+                        "credit": 0.00,
+                        "values": 0.00,
+                        "share": 0.00,
+                        "cost_allocation_id": self.id,
+                        "line_type": 'debit',
+                        }
+
+                # CHANGE INTERNET USAGE TO billing
+                for rec in rec_list.recurring_invoice_line_ids:
+                    debit_line_dict[debit_subscriber_id.id]['values'] += rec.product_id.internet_usage
+                    credit_value += rec.product_id.internet_usage
+            for key, item in debit_line_dict.items():
+                journal_item.append((0, 0, item))
+            # Credit
+            credit_analytic_ids = self.credit_analytic_account_id.id
+            credit_line_dict = {
+                "date": self.accounting_date,
+                "account_id": credit_account_id,
+                "analytic_account_id": credit_analytic_ids,
+                "partner_id": None,
+                "name": self.name,
+                "debit": 0.00,
+                "credit": 0.00,
+                "values": credit_value,
+                "share": 0.00,
+                "cost_allocation_id": self.id,
+                "line_type": 'credit',
+                }
+            journal_item.append((0, 0, credit_line_dict))
+            self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
+
         elif application == 'others':
-            _logger.debug(f'Others')
-            # Do nothing
-    # Allocate
+            _logger.debug(f'OTHERS')
+            self.update({"cost_allocation_line": None})
+            journal_data = []
+            for record in self.debit_analytic_account_id:
+                debit_line_dict = {
+                    "date": self.accounting_date,
+                    "account_id": debit_account_id,
+                    "analytic_account_id": record.id,
+                    "partner_id": None,
+                    "name": self.name,
+                    "debit": 0.00,
+                    "credit": 0.00,
+                    "values": 0.00,
+                    "share": 0.00,
+                    "cost_allocation_id": self.id,
+                    "line_type": 'debit',
+                    }
+                journal_data.append((0, 0, debit_line_dict))
+
+            for record in self.credit_other_analytic_account_id:
+                credit_line_dict = {
+                    "date": self.accounting_date,
+                    "account_id": credit_account_id,
+                    "analytic_account_id": record.id,
+                    "partner_id": None,
+                    "name": self.name,
+                    "debit": 0.00,
+                    "credit": 0.00,
+                    "values": 0.00,
+                    "share": 0.00,
+                    "cost_allocation_id": self.id,
+                    "line_type": 'credit',
+                    }
+
+                journal_data.append((0, 0, credit_line_dict))
+            self.update({"cost_allocation_line": journal_data, "state": "draft"})
+
     def button_allocate_amount_and_share(self):
         factor = self.factor
         basis = self.basis
@@ -159,7 +299,7 @@ class CostAllocation(models.Model):
                 record.write({"share": share, "credit": amount})
         self.write({"state": "allocated"})
         return True
-    # Post
+
     def button_posting_journal_entries(self):
         # Create Journal Entry
         data = []
@@ -171,17 +311,19 @@ class CostAllocation(models.Model):
                         'debit': record.debit,
                         'credit': record.credit}
             data.append((0, 0, raw_data))
-
         journal_entry = self.env['account.move'].create({
             'ref': self.name,
             'date': self.accounting_date,
             'journal_id': self.journal_id.id,
             'line_ids': data,
             })
-        # call posting of journat entry
+        # call posting of journal entry
         journal_entry.post()
         self.write({"state": "posted", "posted_date": date.today()})
         return True
+
+    def button_reset_to_draft(self):
+        self.write({"state": "draft"})
 
     @api.model
     def create(self, vals):
