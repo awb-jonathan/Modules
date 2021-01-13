@@ -48,7 +48,7 @@
                             type="object"
                             class="oe_highlight"
                             attrs="{'invisible': [('state', '!=', 'draft')]}"
-                            string="Compute"/>
+                            string="Generate"/>
                             
                     <!-- Allocate-->
                     <button name="button_allocate_amount_and_share"
@@ -88,7 +88,7 @@
                             <field name="basis"/>
                             <field name="product_category_id" 
                                 widget="many2many_tags" 
-                                attrs="{'invisible': [('application', '=', 'others')], 'required': [('application', '!=', 'others')]}"/>
+                                attrs="{'invisible': [('application', 'in', ['others','salaries'])], 'required': [('application', 'not in', ['others','salaries'])]}"/>
                         </group>
                         <group>
                             <field name="accounting_date"/>

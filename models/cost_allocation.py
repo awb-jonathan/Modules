@@ -85,17 +85,17 @@ class CostAllocation(models.Model):
         debit_account_id = self.debit_account_id.id
         credit_account_id = self.credit_account_id.id
         application = self.application
+        debit_analytic_ids = [rec.id for rec in self.debit_analytic_account_id]
+        product_category = [rec.id for rec in self.product_category_id]
         args = [("date_start", ">=", start_date),
                 ("date_start", "<=", end_date),
                 ("stage_id.name", "not in", ["Draft", "Closed"])]
+        self.update({"cost_allocation_line": None})
         if application == 'internet':
-            self.update({"cost_allocation_line": None})
             _logger.debug(f'COMPUTE INTERNET')
             journal_item = []
             debit_line_dict = {}
             credit_line_dict = {}
-            debit_analytic_ids = [rec.id for rec in self.debit_analytic_account_id]
-            product_category = [rec.id for rec in self.product_category_id]
             _logger.debug(f'PRODUCT_CATEGORY: {product_category}')
             # Debit
             debit_args = args + [("partner_id.subscriber_location_id.analytic_account_id", "in", debit_analytic_ids)]
@@ -145,12 +145,10 @@ class CostAllocation(models.Model):
             self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
         elif application == 'program_cost':
-            self.update({"cost_allocation_line": None})
             _logger.debug(f'COMPUTE PROGRAM COST')
             journal_item = []
             debit_line_dict = {}
             credit_line_dict = {}
-            debit_analytic_ids = [rec.id for rec in self.debit_analytic_account_id]
             # Debit
             debit_args = args + [("partner_id.subscriber_location_id.analytic_account_id", "in", debit_analytic_ids)]
             debit_subscription = sale_subscription_obj.search(debit_args)
@@ -171,12 +169,13 @@ class CostAllocation(models.Model):
                         "cost_allocation_id": self.id,
                         "line_type": 'debit',
                         }
-                # CHANGE INTERNET USAGE TO CABLE
                 for rec in rec_list.recurring_invoice_line_ids:
-                    debit_line_dict[debit_subscriber_id.id]['values'] += rec.product_id.internet_usage
-                    credit_value += rec.product_id.internet_usage
+                    if rec.product_id.categ_id.id in product_category:
+                        debit_line_dict[debit_subscriber_id.id]['values'] += 1
+                        credit_value += 1
             for key, item in debit_line_dict.items():
-                journal_item.append((0, 0, item))
+                if item['values'] != 0:
+                    journal_item.append((0, 0, item))
             # Credit
             credit_analytic_ids = self.credit_analytic_account_id.id
             credit_line_dict = {
@@ -196,7 +195,6 @@ class CostAllocation(models.Model):
             self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
         elif application == 'salaries':
-            self.update({"cost_allocation_line": None})
             _logger.debug(f'COMPUTE SALARIES')
             journal_item = []
             debit_line_dict = {}
@@ -222,11 +220,14 @@ class CostAllocation(models.Model):
                         "cost_allocation_id": self.id,
                         "line_type": 'debit',
                         }
-
-                # CHANGE INTERNET USAGE TO billing
-                for rec in rec_list.recurring_invoice_line_ids:
-                    debit_line_dict[debit_subscriber_id.id]['values'] += rec.product_id.internet_usage
-                    credit_value += rec.product_id.internet_usage
+                invoice_args = [
+                                ('invoice_line_ids.subscription_id', 'in', rec_list.ids),
+                                ("invoice_date", ">=", start_date),
+                                ("invoice_date", "<=", end_date),
+                                ('state', '=', 'posted')]
+                invoices = self.env['account.move'].search(invoice_args)
+                debit_line_dict[debit_subscriber_id.id]['values'] += len(invoices)
+                credit_value += len(invoices)
             for key, item in debit_line_dict.items():
                 journal_item.append((0, 0, item))
             # Credit
@@ -248,8 +249,7 @@ class CostAllocation(models.Model):
             self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
         elif application == 'others':
-            _logger.debug(f'OTHERS')
-            self.update({"cost_allocation_line": None})
+            _logger.debug(f'COMPUTE OTHERS')
             journal_data = []
             for record in self.debit_analytic_account_id:
                 debit_line_dict = {
