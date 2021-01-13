@@ -11,4 +11,4 @@ class ProductTemplateExt(models.Model):
     _inherit = 'product.template'
     _description = 'Product Template'
 
-    internet_usage = fields.Float(string="Internet Usage")
+    internet_usage = fields.Float(string="Internet Usage", required=True)
