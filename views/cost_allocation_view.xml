@@ -44,27 +44,27 @@
             <form string="Cost Allocation">
                 <header>
                     <!-- Compute -->                            
-                    <button name="button_compute_source_information"
+                    <button name="action_compute_source_information"
                             type="object"
                             class="oe_highlight"
                             attrs="{'invisible': [('state', '!=', 'draft')]}"
                             string="Generate"/>
                             
                     <!-- Allocate-->
-                    <button name="button_allocate_amount_and_share"
+                    <button name="action_allocate_amount_and_share"
                             type="object"
                             class="oe_highlight"
                             attrs="{'invisible': [('state', 'not in', ['draft'])]}"
                             string="Allocate"/>
                             
                     <!-- Post -->
-                    <button name="button_posting_journal_entries"
+                    <button name="action_posting_journal_entries"
                             type="object"
                             class="oe_highlight"
                             attrs="{'invisible': [('state', '!=', 'allocated')]}"
                             string="Post"/>
 
-                    <button name="button_reset_to_draft"
+                    <button name="action_reset_to_draft"
                             type="object"
                             attrs="{'invisible': [('state', 'not in', ['allocated', 'posted'])]}"
                             string="Reset to Draft"/>

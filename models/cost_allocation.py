@@ -78,7 +78,7 @@ class CostAllocation(models.Model):
 
     # button
     # Compute
-    def button_compute_source_information(self):
+    def action_compute_source_information(self):
         sale_subscription_obj = self.env['sale.subscription']
         start_date = self.start_date
         end_date = self.end_date
@@ -264,7 +264,7 @@ class CostAllocation(models.Model):
                 journal_item.append((0, 0, credit_line_dict))
             self.update({"cost_allocation_line": journal_item, "state": "draft", "factor": credit_value})
 
-    def button_allocate_amount_and_share(self):
+    def action_allocate_amount_and_share(self):
         factor = self.factor
         basis = self.basis
         share = 0
@@ -279,7 +279,7 @@ class CostAllocation(models.Model):
         self.write({"state": "allocated"})
         return True
 
-    def button_posting_journal_entries(self):
+    def action_posting_journal_entries(self):
         # Create Journal Entry
         data = []
         for record in self.cost_allocation_line:
@@ -304,7 +304,7 @@ class CostAllocation(models.Model):
         self.write({"state": "posted", "posted_date": date.today()})
         return True
 
-    def button_reset_to_draft(self):
+    def action_reset_to_draft(self):
         self.write({"state": "draft"})
 
     @api.model
