@@ -1,4 +1,7 @@
 from odoo import api, fields, models, _
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class AccountMove(models.Model):
@@ -19,7 +22,10 @@ class AccountMove(models.Model):
         self.write({"approved_by": current_user})
         return res
 
-    @api.onchange('state')
-    def _onchange_set_to_check(self):
+    @api.model
+    def create(self, vals):
+        vals['to_check'] = False
         if self.user_has_groups('account.group_account_invoice'):
-            self.to_check = True
+            vals['to_check'] = True
+        res = super(AccountMove, self).create(vals)
+        return res
