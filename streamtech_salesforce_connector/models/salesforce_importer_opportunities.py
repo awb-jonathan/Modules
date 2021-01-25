@@ -265,9 +265,9 @@ class SalesForceImporterOpportunities(models.Model):
                 salesforce_ids.append(lead['Id'])
 
             # TODO; uncomment
-            # return salesforce_ids
+            return salesforce_ids
             # TODO; remove
-            return []
+            # return []
 
         except Exception as e:
             raise osv.except_osv("Error Details!", e)
