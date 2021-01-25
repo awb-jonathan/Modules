@@ -1,10 +1,25 @@
 import logging
 import datetime
+from pprint import pformat
 
-from odoo import models
+from odoo import models, fields
 from openerp.osv import osv
 
 _logger = logging.getLogger(__name__)
+
+
+class CustomLead(models.Model):
+    _inherit = "crm.lead"
+
+    sf_type = fields.Selection([("New", "New"),
+                                ("Upgrade", "Upgrade"),
+                                ("Recontract", "Recontract"),
+                                ("Downgrade", "Downgrade"),
+                                ("Reconnect ion", "Reconnect ion"),
+                                ("Convert", "Convert"),
+                                ("Disconnected", "Disconnected"),
+                                ("Pre-Termination", "Pre-Termination"),
+                                ], string='Type')
 
 
 class SalesForceImporterOpportunities(models.Model):
@@ -19,7 +34,7 @@ class SalesForceImporterOpportunities(models.Model):
             # Field/s removed due to errors found with usage with PAVI SalesForce: 
             #  ExpectedRevenue
             query = """SELECT 
-                    id,name, AccountId, Amount, CloseDate,  Description, LastMOdifiedDate, 
+                    Id, name, AccountId, Amount, CloseDate,  Description, LastMOdifiedDate, 
                     HasOpenActivity, IsDeleted, IsWon, OwnerId, Probability, 
                     LastActivityDate, StageName, type, leadSource, CampaignId 
                     FROM opportunity"""
@@ -108,7 +123,7 @@ class SalesForceImporterOpportunities(models.Model):
         WHERE
             oli.OpportunityId = '0065500000HZSYHAA5'
         """ 
-        rows = sf.query(query)['records']
+        rows = self.sales_force.query(query)['records']
         # TODO: loop and populate line items of Odoo opportunites
 
     def creating_opportunities(self, opportunities):
@@ -168,10 +183,10 @@ class SalesForceImporterOpportunities(models.Model):
                                 'name': lead['StageName'],
                             })
 
-                        lead = self._create_lead_data(lead, lead_stage, campaign, medium, source)
-                        lead['partner_id'] = lead_partner.id
-                        odoo_lead.write(lead)
-                        self._find_and_link_opportunity_products(lead)
+                        lead_data = self._create_lead_data(lead, lead_stage, campaign, medium, source)
+                        lead_data['partner_id'] = lead_partner.id
+                        odoo_lead.write(lead_data)
+                        self._find_and_link_opportunity_products(lead_data)
                         self.env.cr.commit()
                     else:
                         lead_stage = self.env['crm.stage'].search([('name', '=', lead['StageName'])])
@@ -180,9 +195,9 @@ class SalesForceImporterOpportunities(models.Model):
                                 'name': lead['StageName'],
                             })
 
-                        lead = self._create_lead_data(lead, lead_stage, campaign, medium, source)
-                        odoo_lead.write(lead)
-                        self._find_and_link_opportunity_products(lead)
+                        lead_data = self._create_lead_data(lead, lead_stage, campaign, medium, source)
+                        odoo_lead.write(lead_data)
+                        self._find_and_link_opportunity_products(lead_data)
                         self.env.cr.commit()
                 else:
                     if lead['CampaignId']:
@@ -229,11 +244,11 @@ class SalesForceImporterOpportunities(models.Model):
                                 'name': lead['StageName'],
                             })
 
-                        lead = self._create_lead_data(lead, lead_stage, campaign, medium, source)
-                        lead['location'] = 'SalesForce'
-                        lead['partner_id'] = lead_partner.id
-                        self.env['crm.lead'].create(lead)
-                        self._find_and_link_opportunity_products(lead)
+                        lead_data = self._create_lead_data(lead, lead_stage, campaign, medium, source)
+                        lead_data['location'] = 'SalesForce'
+                        lead_data['partner_id'] = lead_partner.id
+                        self.env['crm.lead'].create(lead_data)
+                        self._find_and_link_opportunity_products(lead_data)
                         self.env.cr.commit()
                     else:
                         lead_stage = self.env['crm.stage'].search([('name', '=', lead['StageName'])])
@@ -242,10 +257,10 @@ class SalesForceImporterOpportunities(models.Model):
                                 'name': lead['StageName'],
                             })
 
-                        lead = self._create_lead_data(lead, lead_stage, campaign, medium, source)
-                        lead['location'] = 'SalesForce'
-                        self.env['crm.lead'].create(lead)
-                        self._find_and_link_opportunity_products(lead)
+                        lead_data = self._create_lead_data(lead, lead_stage, campaign, medium, source)
+                        lead_data['location'] = 'SalesForce'
+                        self.env['crm.lead'].create(lead_data)
+                        self._find_and_link_opportunity_products(lead_data)
                         self.env.cr.commit()
                 salesforce_ids.append(lead['Id'])
 
