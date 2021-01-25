@@ -15,7 +15,7 @@ class CustomLead(models.Model):
                                 ("Upgrade", "Upgrade"),
                                 ("Recontract", "Recontract"),
                                 ("Downgrade", "Downgrade"),
-                                ("Reconnect ion", "Reconnect ion"),
+                                ("Reconnection", "Reconnection"),
                                 ("Convert", "Convert"),
                                 ("Disconnected", "Disconnected"),
                                 ("Pre-Termination", "Pre-Termination"),
@@ -87,6 +87,11 @@ class SalesForceImporterOpportunities(models.Model):
             'description': lead['Description'] if lead['Description'] else None,
             'sf_type': lead['Type'] if lead['Type'] else None
         } 
+
+        # Adjust typo from PAVI SF data so it will be spelled right upon Odoo import
+        if lead['sf_type'] == 'Reconnect ion':
+            lead['sf_type'] = 'Reconnection'
+
         return lead
 
     def _create_lead_partner_data(self, partner):
