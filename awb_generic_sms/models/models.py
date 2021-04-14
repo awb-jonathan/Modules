@@ -16,29 +16,6 @@ class SMS(models.Model):
     def save_history(self, sent_sms):
         self.env['awb.sms.history'].create(sent_sms)
 
-    def _check_sms_gateway(
-        self,
-        sms_gateway,
-        sms_gateway_url,
-        sms_gateway_token,
-    ):
-        if sms_gateway:
-            error = []
-            if not sms_gateway_url:
-                error.append("SMS Gateway Url")
-            if not sms_gateway_token:
-                error.append("SMS Gateway Token")
-            if error:
-                raise exceptions.ValidationError(
-                    ("%s is/are not set, You can configure this on Settings > Smart SMS Gateway") % (
-                        ", ".join(error)
-                    )
-                )
-        else:
-            raise exceptions.ValidationError(
-                "Inactive SMS Gateway, You can configure this on Settings > Smart SMS Gateway"
-            )
-
     def send_now(
         self,
         sms_id=None,
@@ -48,75 +25,40 @@ class SMS(models.Model):
         template_name=None,
         state=None
     ):
-        params = self.env['ir.config_parameter'].sudo()
-        sms_gateway = params.get_param('smart_gateway')
-        sms_gateway_url = params.get_param('smart_gateway_url')
-        sms_gateway_token = params.get_param('smart_gateway_token')
-
-        self._check_sms_gateway(
-            sms_gateway,
-            sms_gateway_url,
-            sms_gateway_token,
-        )
-
         if record:
-            if state:
-                if record.state == state:
-                    recipient_ids = record.partner_id
+            if state and record.state == state:
+                recipient_ids = record.partner_id
 
-                    raw_template_body = self.env['awb.sms.template'].search(
-                        [("name", "=", template_name)], limit=1, order="write_date desc"
-                    )
+                raw_template_body = self.env['awb.sms.template'].search(
+                    [("name", "=", template_name)], limit=1, order="write_date desc"
+                ).template_body
 
-                    if raw_template_body.exists():
-                        raw_template_body = raw_template_body.template_body.replace("${", "{")
-                    else:
-                        raise exceptions.ValidationError(
-                            (
-                                "SMS Template %s not found, Make sure to input the correct SMS Template name"
-                            ) % template_name
-                        )
+                raw_template_body = raw_template_body.replace("${", "{")
+                format_keys = [fkey for _, fkey, _, _ in Formatter().parse(raw_template_body) if fkey]
 
-                    format_keys = [fkey for _, fkey, _, _ in Formatter().parse(raw_template_body) if fkey]
+                key_value = {}
+                for key in format_keys:
 
-                    key_value = {}
-                    for key in format_keys:
+                    try:
+                        value = getattr(record, key)
+                    except AttributeError:
+                        value = None
 
+                    if value:
                         try:
-                            value = getattr(record, key)
+                            if value.name:
+                                value = value.name
                         except AttributeError:
-                            value = None
+                            pass
 
-                        if value:
-                            try:
-                                if value.name:
-                                    value = value.name
-                            except AttributeError:
-                                if isinstance(value, float):
-                                    value = "\u20B1 {:,.2f}".format(value)
-                                else:
-                                    pass
+                    raw_data = {key: value}
+                    key_value.update(raw_data)
 
-                        raw_data = {key: value}
-                        key_value.update(raw_data)
-
-                    template_body = raw_template_body.format_map(key_value)
-                else:
-                    raise exceptions.ValidationError(
-                        ("Record should be in %s state.") % state
-                    )
+                template_body = raw_template_body.format_map(key_value)
             else:
-                raise exceptions.ValidationError(
-                    ("State parameter is required, Please check server actions")
-                )
+                return None
 
-        sms = SendSMS(
-            url=sms_gateway_url,
-            token=sms_gateway_token,
-            sms_id=sms_id,
-            recipients=recipient_ids,
-            message=template_body
-        )
+        sms = SendSMS(sms_id=sms_id, recipients=recipient_ids, message=template_body)
         sent_sms = sms.send()
         self.save_history(sent_sms)
 
@@ -221,4 +163,25 @@ class SmsTemplate(models.Model):
         string="Model", required=True, default="billing"
     )
 
-    template_body = fields.Text('Message', translate=True)
+    @api.model
+    def _default_body(self):
+        msg_body = """
+            Good day!,
+            This is your bill for the month of ${billing_month},
+            Accnt Name: ${account_name},
+            Accnt No.: ${account_num},
+            MSF: ${msf_php},
+            Arrears: ${arrears},
+            Total Bill: ${total_bill},
+            ATM Ref No.: ${atm_ref_no},
+            Bill No.: ${bill_num},
+            Due Date: ${due_date},
+            Bill Covered: ${bill_covered}
+
+            You may now pay your bill via this link, https://www.streamtech.com.ph/bills-payment/
+            Please use your ATM.
+            Thank you.
+        """
+        return msg_body
+
+    template_body = fields.Text('Message', translate=True, default=_default_body)
