@@ -42,6 +42,7 @@
         'data/account_move_data.xml',
         'data/account_payment_data.xml',
         'data/awb_sms_template_data.xml',
+        'sms_data_helpers/sms_sending_deactivation.xml',
     ],
     # only loaded in demonstration mode
     'demo': [
